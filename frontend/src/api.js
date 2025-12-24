@@ -6,6 +6,9 @@ async function handle(res) {
 }
 
 export const api = {
+  get: (path) =>
+    fetch(`${BASE}${path}`).then(handle),
+
   searchProducts: ({ q, type }) => {
     const url = new URL(`${BASE}/inventory/search`);
     if (q) url.searchParams.set("q", q);
@@ -26,10 +29,4 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     }).then(handle),
-
-  inventorySummary: () =>
-    fetch(`${BASE}/analytics/inventory-summary`).then(handle),
-
-  salesSummary: () =>
-    fetch(`${BASE}/analytics/sales-summary`).then(handle)
 };

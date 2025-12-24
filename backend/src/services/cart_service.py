@@ -33,14 +33,19 @@ class CartService:
             unit_price = float(it["unit_price"])
 
             row = inv_df[inv_df["No_"] == pno].iloc[0]
+
             name = str(row["name"])
+            product_type = str(row.get("type", ""))
+
             line_total = unit_price * qty
+
             total += line_total
 
             self.inv.decrement_stock(pno, qty)
             sale_lines.append({
                 "product_no": pno,
                 "product_name": name,
+                "product_type": product_type,   # ✅ NEW
                 "qty": qty,
                 "unit_price": unit_price,
                 "total_line": line_total

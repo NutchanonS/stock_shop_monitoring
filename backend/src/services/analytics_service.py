@@ -80,3 +80,53 @@ class AnalyticsService:
             "monthly": self._clean(monthly),
             "top_products": self._clean(top_products),
         }
+    
+    def _load_sales_with_cost(self):
+        sales = pd.read_csv(settings.SALES_CSV)
+        inv = pd.read_csv(settings.INVENTORY_CSV)
+
+        sales["ts"] = pd.to_datetime(sales["ts"], utc=True)
+        sales = sales.merge(
+            inv[["No_", "cost", "name"]],
+            left_on="product_no",
+            right_on="No_",
+            how="left"
+        )
+
+        sales["cost_total"] = sales["qty"] * sales["cost"]
+        sales["profit"] = sales["total_line"] - sales["cost_total"]
+
+        return sales
+    
+    def sales_timeseries(self, period: str = "day"):
+        s = self._load_sales_with_cost()
+
+        if period == "month":
+            s["period"] = s["ts"].dt.to_period("M").astype(str)
+        else:
+            s["period"] = s["ts"].dt.date.astype(str)
+
+        g = s.groupby("period").agg(
+            revenue=("total_line", "sum"),
+            cost=("cost_total", "sum"),
+            profit=("profit", "sum")
+        ).reset_index().sort_values("period")
+
+        return g.to_dict("records")
+
+    def top_products(self, period: str = "month"):
+        s = self._load_sales_with_cost()
+
+        if period == "week":
+            s["period"] = s["ts"].dt.to_period("W").astype(str)
+        else:
+            s["period"] = s["ts"].dt.to_period("M").astype(str)
+
+        g = s.groupby(["product_name"]).agg(
+            units=("qty", "sum"),
+            revenue=("total_line", "sum")
+        ).reset_index()
+
+        top5 = g.sort_values("revenue", ascending=False).head(5)
+
+        return top5.to_dict("records")

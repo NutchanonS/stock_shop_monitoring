@@ -1,0 +1,5 @@
+sale_id,ts,customer_id,product_no,product_name,qty,unit_price,total_line
+7693f63f-46a3-40de-91f0-2bfc5781b639,2025-12-24T16:16:19.552474+00:00,walkin-1,13,USB MP3 player รถ DZ-529,2,550.0,1100.0
+50d44ae2-aead-434d-9bfa-7fb9c547c4e0,2025-12-24T16:16:54.392065+00:00,walkin-3,13,USB MP3 player รถ DZ-529,1,550.0,550.0
+3c9961d5-b44a-4a95-b9eb-eea65e0fd9b1,2025-12-24T16:23:47.937479+00:00,walkin-1,13,USB MP3 player รถ DZ-529,1,550.0,550.0
+e37dca11-eaa5-4edd-979f-59e18de6d94e,2025-12-24T16:23:59.054872+00:00,walking2,13,USB MP3 player รถ DZ-529,1,550.0,550.0

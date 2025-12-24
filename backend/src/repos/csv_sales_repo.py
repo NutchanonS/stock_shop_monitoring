@@ -14,7 +14,18 @@ class CsvSalesRepo:
         if not os.path.exists(self.path):
             with open(self.path, "w", newline="", encoding="utf-8") as f:
                 w = csv.writer(f)
-                w.writerow(["sale_id","ts","customer_id","product_no","product_name","qty","unit_price","total_line"])
+                w.writerow([
+                    "sale_id",
+                    "ts",
+                    "customer_id",
+                    "product_no",
+                    "product_name",
+                    "product_type",   # ✅ NEW
+                    "qty",
+                    "unit_price",
+                    "total_line",
+                ])
+
 
     def append_lines(self, customer_id: str, lines: list[dict]) -> tuple[str, datetime]:
         self._ensure_file()
@@ -33,8 +44,11 @@ class CsvSalesRepo:
                         customer_id,
                         ln["product_no"],
                         ln["product_name"],
+                        ln["product_type"],   # ✅ NEW
                         ln["qty"],
                         ln["unit_price"],
                         ln["total_line"],
                     ])
+
+                    
         return sale_id, ts
