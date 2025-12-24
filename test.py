@@ -1,0 +1,2 @@
+import pandas as pd
+pd.DataFrame(columns=['sale_id','ts','customer_id','product_no','product_name','qty','unit_price','total_line']).to_csv(r'C:\works\stock_shop_monitoring\backend\data\sales.csv',index=False)
