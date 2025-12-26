@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../api.js";
 
 export default function POS() {
@@ -8,33 +8,53 @@ export default function POS() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggest, setShowSuggest] = useState(false);
 
+  // keyboard highlight index
+  const [highlight, setHighlight] = useState(-1);
+
+  const suggestRef = useRef(null);
+
   const [carts, setCarts] = useState({ "walkin-1": [] });
   const [activeCart, setActiveCart] = useState("walkin-1");
   const [newCartName, setNewCartName] = useState("");
 
-  /* ---------------- LIVE SUGGEST (AUTOCOMPLETE) ---------------- */
+  /* ---------------- AUTOCOMPLETE SEARCH ---------------- */
   useEffect(() => {
     if (!q.trim()) {
       setSuggestions([]);
       setShowSuggest(false);
+      setHighlight(-1);
       return;
     }
 
-    // small debounce
     const t = setTimeout(async () => {
       const res = await api.searchProducts({ q });
-      setSuggestions(res.slice(0, 10));   // limit to 10
+      setSuggestions(res.slice(0, 10));
       setShowSuggest(true);
-    }, 180);
+      setHighlight(0); // default first row
+    }, 160);
 
     return () => clearTimeout(t);
   }, [q]);
 
-  /* ---------------- MANUAL SEARCH (ENTER BUTTON) ---------------- */
+  /* ---------------- CLICK OUTSIDE TO CLOSE ---------------- */
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (suggestRef.current && !suggestRef.current.contains(e.target)) {
+        setShowSuggest(false);
+        setHighlight(-1);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  /* ---------------- MANUAL SEARCH BUTTON ---------------- */
   async function search() {
     const res = await api.searchProducts({ q });
     setRows(res);
     setShowSuggest(false);
+    setHighlight(-1);
   }
 
   /* ---------------- CART OPS ---------------- */
@@ -122,6 +142,42 @@ export default function POS() {
   const activeItems = carts[activeCart] ?? [];
   const total = activeItems.reduce((s, i) => s + i.qty * i.unit_price, 0);
 
+  /* ---------------- KEYBOARD HANDLING ---------------- */
+  function handleKey(e) {
+    if (!showSuggest || !suggestions.length) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight(h => (h + 1) % suggestions.length);
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight(h => (h - 1 + suggestions.length) % suggestions.length);
+    }
+
+    if (e.key === "Escape") {
+      setShowSuggest(false);
+      setHighlight(-1);
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      if (highlight >= 0 && suggestions[highlight]) {
+        const p = suggestions[highlight];
+        const stock = Number(p.number);
+        if (stock > 0) addToCart(activeCart, p);
+      }
+
+      setShowSuggest(false);
+      setHighlight(-1);
+
+      // Enter still performs full search
+      search();
+    }
+  }
+
   /* ========================= UI ========================= */
 
   return (
@@ -132,13 +188,14 @@ export default function POS() {
           <h3>🔍 Product Search</h3>
         </div>
 
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative" }} ref={suggestRef}>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <input
               value={q}
               onChange={e => setQ(e.target.value)}
+              onKeyDown={handleKey}
               onFocus={() => suggestions.length && setShowSuggest(true)}
-              placeholder="Search product name / type..."
+              placeholder="Search name / type..."
               style={{ flex: 1 }}
             />
             <button onClick={search}>Search</button>
@@ -155,14 +212,16 @@ export default function POS() {
                 right: 0,
                 maxHeight: 260,
                 overflowY: "auto",
-                zIndex: 20
+                zIndex: 30
               }}
             >
-              {suggestions.map(p => {
+              {suggestions.map((p, i) => {
                 const stock = Number(p.number);
                 const inCart =
-                  carts[activeCart]?.find(i => i.product_no === p.No_)
+                  carts[activeCart]?.find(x => x.product_no === p.No_)
                     ?.qty ?? 0;
+
+                const isActive = i === highlight;
 
                 return (
                   <div
@@ -171,12 +230,17 @@ export default function POS() {
                       padding: 10,
                       borderBottom: "1px solid var(--border)",
                       cursor: stock > 0 ? "pointer" : "not-allowed",
-                      opacity: stock > 0 ? 1 : 0.5
+                      opacity: stock > 0 ? 1 : 0.5,
+                      background: isActive
+                        ? "rgba(59,130,246,0.15)"
+                        : "transparent"
                     }}
+                    onMouseEnter={() => setHighlight(i)}
                     onClick={() => {
                       if (stock <= 0) return;
                       addToCart(activeCart, p);
                       setShowSuggest(false);
+                      setHighlight(-1);
                     }}
                   >
                     <b>{p.name}</b>
@@ -207,6 +271,7 @@ export default function POS() {
               style={{ padding: 12, borderBottom: "1px solid var(--border)" }}
             >
               <b>{p.name}</b>
+
               <div style={{ fontSize: 12, color: "var(--muted)" }}>
                 Stock: {stock} • In cart: {cartQty}
               </div>

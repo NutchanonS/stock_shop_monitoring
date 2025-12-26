@@ -143,3 +143,24 @@ td {
   color: white;
   border-color: var(--primary);
 }
+.filter-btn {
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.filter-btn:hover {
+  color: #38bdf8;
+}
+td, th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}

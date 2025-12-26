@@ -3,6 +3,7 @@ import Tabs from "./components/Tabs.jsx";
 import POS from "./pages/POS.jsx";
 import Inventory from "./pages/Inventory.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import RegisterStock from "./pages/RegisterStock.jsx";
 
 export default function App() {
   const [tab, setTab] = useState("POS");
@@ -32,7 +33,7 @@ export default function App() {
       </div>
 
       {/* TABS */}
-      <Tabs
+      {/* <Tabs
         value={tab}
         onChange={setTab}
         tabs={[
@@ -40,14 +41,33 @@ export default function App() {
           { id: "Inventory", label: "Inventory Management" },
           { id: "Dashboard", label: "Analytics Dashboard" }
         ]}
-      />
-
+      /> */}
       {/* ACTIVE PAGE */}
-      <div style={{ marginTop: 24 }}>
+      {/* <div style={{ marginTop: 24 }}>
         {tab === "POS" && <POS />}
         {tab === "Inventory" && <Inventory />}
         {tab === "Dashboard" && <Dashboard />}
+      </div> */}
+
+      
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "POS", label: "POS / Shopping Cart" },
+          { id: "Inventory", label: "Inventory Management" },
+          { id: "Register", label: "Register / Add Stock" },
+          { id: "Dashboard", label: "Analytics Dashboard" }
+        ]}
+      />
+
+      <div style={{ marginTop: 20 }}>
+        {tab === "POS" && <POS />}
+        {tab === "Inventory" && <Inventory />}
+        {tab === "Register" && <RegisterStock />}
+        {tab === "Dashboard" && <Dashboard />}
       </div>
+
     </div>
   );
 }

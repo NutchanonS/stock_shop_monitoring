@@ -19,6 +19,12 @@ class CsvInventoryRepo:
     def search(self, q: Optional[str], type_: Optional[str]) -> pd.DataFrame:
         # print('------------from CsvInventoryRepo:----------------')
         df = self.read_df()
+        try:
+            df = df.sort_values('type').reset_index(drop=True)
+        except:
+            pass
+
+        # df['No_'] = df.index + 1
         df = df.fillna('null')
         # print('------------from CsvInventoryRepo:', df.head(),'----------------', df.columns)
         if q:
@@ -54,3 +60,52 @@ class CsvInventoryRepo:
                 raise ValueError(f"Not enough stock for No_={product_no} (have {current}, need {qty})")
             df.at[i, "number"] = current - qty
             self.write_df(df)
+
+    def create_product(self, data: dict):
+        os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+
+        with file_lock(LOCK_FILE):
+            df = self.read_df()
+            print('==============create_product1===================')
+
+            # ensure No_ exists as python int
+            if "No_" in df:
+                max_no = df["No_"].max()
+                max_no = int(max_no) if pd.notna(max_no) else 0
+            else:
+                max_no = 0
+
+            next_no = max_no + 1
+            data["No_"] = int(next_no)
+
+            print('==============create_product2===================')
+
+            # keep python types (avoid numpy.int64)
+            row = pd.DataFrame([data], dtype=object)
+
+            df = pd.concat([df, row], ignore_index=True)
+
+            print('==============create_product3', df.head(2), '=================')
+
+            self.write_df(df)
+
+        return data
+
+
+    
+    def increment_stock(self, product_no: int, qty: int):
+        print('==============increment=================')
+        df = self.read_df()
+
+        idx = df.index[df["No_"] == product_no]
+        print('==============increment2', df[df["No_"] == product_no], '========')
+        if not len(idx):
+            raise KeyError("Product not found")
+
+        i = idx[0]
+        df.at[i, "number"] = int(df.at[i, "number"]) + int(qty)
+
+        self.write_df(df)
+        print('==============increment3', df.head(2),'=================')
+        return {"ok": True, "new_stock": df.at[i, "number"]}
+

@@ -14,3 +14,8 @@ class InventoryService:
     def update(self, product_no: int, updates: dict):
         self.repo.update_product_fields(product_no, updates)
         return {"ok": True}
+    def create(self, payload: dict):
+        return self.repo.create_product(payload)
+
+    def add_stock(self, product_no: int, qty: int):
+        return {"stock": self.repo.increment_stock(product_no, qty)}

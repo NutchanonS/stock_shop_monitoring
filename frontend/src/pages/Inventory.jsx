@@ -1,117 +1,450 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { api } from "../api.js";
 
+const NUMBER_FIELDS = new Set([
+  "number","cost","sell_price_lower","sell_price_avg",
+  "profit","piece_per_cost"
+]);
+
 export default function Inventory() {
+
   const [rows, setRows] = useState([]);
+  const [filters, setFilters] = useState({});
+  const [sort, setSort] = useState({ field:null, dir:null });
+
+  const [openFilter, setOpenFilter] = useState(null);
 
   async function load() {
     setRows(await api.searchProducts({}));
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   async function save(no, field, value) {
     await api.updateProduct(no, { [field]: value });
     load();
   }
 
-  return (
-    <div className="card">
-      <div className="section-title">
-        <h3>📦 Inventory Management</h3>
-      </div>
+  function clearFilter(field) {
+    setFilters(prev => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
 
-      <div style={{ overflowX: "auto" }}>
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>Name</th>
-              <th>Piece / Cost</th>
-              <th>Stock</th>
-              <th>Cost</th>
-              <th>Sell (Lower)</th>
-              <th>Sell (Avg)</th>
-              <th>Profit</th>
-              <th>Description</th>
-              <th>Remark</th>
-              <th>Location</th>
-              <th>Type</th>
-            </tr>
-          </thead>
+  function clearAllFilters() {
+    setFilters({});
+  }
 
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.No_}>
-                <td>{r.No_}</td>
-                <td>{r.name}</td>
+  function updateFilter(field, patch) {
+    setFilters(prev => ({
+      ...prev,
+      [field]: { ...(prev[field] ?? {}), ...patch }
+    }));
+  }
 
-                <td>{r.piece_per_cost}</td>
+  /* ================= FILTERED DATA ================= */
 
-                {/* Editable Stock */}
-                <td
-                  style={{
-                    color: r.number <= 3 ? "var(--danger)" : "inherit",
-                    fontWeight: r.number <= 3 ? "600" : "400"
-                  }}
+  const filteredRows = useMemo(() => {
+    let data = [...rows];
+
+    for (const [field,f] of Object.entries(filters)) {
+      if (!f) continue;
+
+      if (f.values?.size)
+        data = data.filter(r => f.values.has(String(r[field])));
+
+      if (f.textContains)
+        data = data.filter(r =>
+          String(r[field] ?? "")
+            .toLowerCase()
+            .includes(f.textContains.toLowerCase())
+        );
+
+      if (f.numOp && f.numValue !== "") {
+        const v = Number(f.numValue);
+        data = data.filter(r => {
+          const x = Number(r[field] ?? 0);
+          switch (f.numOp) {
+            case ">": return x > v;
+            case "<": return x < v;
+            case ">=": return x >= v;
+            case "<=": return x <= v;
+            case "=": return x === v;
+          }
+        });
+      }
+    }
+
+    if (sort.field) {
+      data.sort((a,b) => {
+        const A = a[sort.field];
+        const B = b[sort.field];
+
+        return NUMBER_FIELDS.has(sort.field)
+          ? (sort.dir==="asc" ? A-B : B-A)
+          : (sort.dir==="asc"
+              ? String(A).localeCompare(String(B))
+              : String(B).localeCompare(String(A)));
+      });
+    }
+
+    return data;
+
+  }, [rows, filters, sort]);
+
+  /* ================= COLUMNS ================= */
+
+  const columns = [
+    { key:"No_", label:"No", readonly:true },
+    { key:"name", label:"Name" },
+    { key:"piece_per_cost", label:"Piece / Cost" },
+    { key:"number", label:"Stock" },
+    { key:"cost", label:"Cost" },
+    { key:"sell_price_lower", label:"Sell (Lower)" },
+    { key:"sell_price_avg", label:"Sell (Avg)" },
+    { key:"profit", label:"Profit" },
+    { key:"description", label:"Description" },
+    { key:"remark", label:"Remark" },
+    { key:"localtion", label:"Location" },
+    { key:"type", label:"Type" }
+  ];
+
+  /* ================= FILTER PANEL ================= */
+
+  function FilterPanel({ field, values, anchor }) {
+    const col = columns.find(c => c.key === field);
+    const fieldLabel = col?.label ?? field;
+    const ref = useRef(null);
+    const [pos, setPos] = useState({ left: anchor.x, top: anchor.y });
+
+    const active = filters[field] ?? {};
+
+    const [draft, setDraft] = useState({
+      values: new Set(active.values ?? []),
+      textContains: active.textContains ?? "",
+      numOp: active.numOp ?? ">",
+      numValue: active.numValue ?? ""
+    });
+
+    const uniqueValues = [...new Set(values.map(v => String(v ?? "")))];
+
+    function applyFilter() {
+      updateFilter(field, draft);
+      setOpenFilter(null);
+    }
+
+    function handleEnter(e) {
+      if (e.key === "Enter") applyFilter();
+    }
+
+    /* ---- VIEWPORT SAFE POSITIONING ---- */
+
+    useEffect(() => {
+      if (!ref.current) return;
+
+      const rect = ref.current.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const pad = 8;
+
+      let left = anchor.x;
+      let top = anchor.y;
+
+      if (rect.right > vw - pad) left = vw - rect.width - pad;
+      if (rect.left < pad) left = pad;
+
+      if (rect.bottom > vh - pad) top = vh - rect.height - pad;
+      if (rect.top < pad) top = pad;
+
+      setPos({ left, top });
+    }, [anchor]);
+
+    return (
+      <div
+        ref={ref}
+        className="card"
+        style={{
+          position: "fixed",
+          left: pos.left,
+          top: pos.top,
+
+          /* responsive + fits condition input width */
+          minWidth: 300,
+          width: "max-content",
+          maxWidth: 440,
+
+          maxHeight: 480,
+          zIndex: 90,
+          display: "flex",
+          flexDirection: "column",
+
+          background: "var(--panel-bg, #0f172a)",
+          border: "1px solid var(--border)",
+          color: "var(--text-primary)",
+          boxShadow: "0 20px 40px rgba(0,0,0,.45)",
+          borderRadius: 10
+        }}
+      >
+        <div
+          style={{
+            display:"flex",
+            justifyContent:"space-between",
+            alignItems:"center",
+            padding:"10px 12px 8px 12px",
+            borderBottom:"1px solid var(--border)"
+          }}
+        >
+          <div
+            // style={{
+            //   fontSize: 16,
+            //   fontWeight: 700,
+            //   letterSpacing: ".2px",
+            //   color: "var(--accent, #38bdf8)",
+            //   borderBottom: "2px solid var(--accent, #38bdf8)",
+            //   paddingBottom: 2
+            // }}
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: "var(--accent)",
+              paddingBottom: 2
+            }}            
+          >
+            {fieldLabel}
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => clearFilter(fieldLabel)}>Clear</button>
+            <button onClick={clearAllFilters}>Clear ALL</button>
+          </div>
+        </div>
+
+
+        {/* SCROLLABLE BODY */}
+        <div style={{
+          padding:10,
+          overflowY:"auto",
+          flex:1,
+          display:"grid",
+          gap:12,
+          minWidth: 100
+        }}>
+
+          {/* SORT */}
+          <div>
+            <div style={{ fontSize:12, opacity:.8 }}>Sort</div>
+
+            <div style={{ display:"flex", gap:6, marginTop:4 }}>
+              <button onClick={() => setSort({ field, dir:"asc" })}>↑ Asc</button>
+              <button onClick={() => setSort({ field, dir:"desc" })}>↓ Desc</button>
+            </div>
+          </div>
+
+          {/* VALUE CHECKBOX */}
+          <div>
+            <div style={{ fontSize:12, opacity:.8 }}>Filter by values</div>
+
+            <div style={{ maxHeight:110, overflowY:"auto", marginTop:4 }}>
+              {uniqueValues.map(v => (
+                <label key={v} style={{ display:"flex", gap:6 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.values.has(v)}
+                    onChange={e => {
+                      const set = new Set(draft.values);
+                      e.target.checked ? set.add(v) : set.delete(v);
+                      setDraft(d => ({ ...d, values:set }));
+                    }}
+                  />
+                  {v || "(empty)"}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* TEXT FILTER */}
+          {!NUMBER_FIELDS.has(field) && (
+            <div>
+              <div style={{ fontSize:12, opacity:.8 }}>Text contains</div>
+              {/* <input
+                value={draft.textContains}
+                onChange={e => setDraft(d=>({ ...d, textContains:e.target.value }))}
+                onKeyDown={handleEnter}
+              /> */}
+              <input
+                value={draft.textContains}
+                onChange={e =>
+                  setDraft(d => ({ ...d, textContains:e.target.value }))
+                }
+                onKeyDown={handleEnter}
+                style={{
+                  width: "100%",        // 👈 FULL WIDTH
+                  boxSizing: "border-box"
+                }}
+              />
+
+            </div>
+          )}
+
+          {/* NUMBER FILTER */}
+          {NUMBER_FIELDS.has(field) && (
+            <div>
+              <div style={{ fontSize:12, opacity:.8 }}>Number condition</div>
+
+              {/* <div style={{ display:"flex", gap:6, marginTop:4 }}> */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "90px 1fr", // 👈 operator fixed, value fills space
+                  gap: 6,
+                  marginTop: 4
+                }}
+              >
+
+                <select
+                  value={draft.numOp}
+                  onChange={e => setDraft(d=>({ ...d, numOp:e.target.value }))}
                 >
-                  <input
-                    type="number"
-                    defaultValue={r.number}
-                    onBlur={e =>
-                      save(r.No_, "number", Number(e.target.value))
-                    }
-                    style={{ width: 80 }}
-                  />
-                </td>
+                  <option value=">">&gt;</option>
+                  <option value="<">&lt;</option>
+                  <option value=">=">&gt;=</option>
+                  <option value="<=">&lt;=</option>
+                  <option value="=">=</option>
+                </select>
 
-                <td>{r.cost}</td>
+                {/* <input
+                  type="number"
+                  value={draft.numValue}
+                  onChange={e => setDraft(d=>({ ...d, numValue:e.target.value }))}
+                  onKeyDown={handleEnter}
+                /> */}
+                <input
+                  type="number"
+                  value={draft.numValue}
+                  onChange={e =>
+                    setDraft(d => ({ ...d, numValue:e.target.value }))
+                  }
+                  onKeyDown={handleEnter}
+                  style={{
+                    width: "100%",         // 👈 fill remaining width
+                    boxSizing: "border-box"
+                  }}
+                />
 
-                <td>{r.sell_price_lower}</td>
+              </div>
+            </div>
+          )}
 
-                {/* Editable Avg Price */}
-                <td>
-                  <input
-                    type="number"
-                    defaultValue={r.sell_price_avg}
-                    onBlur={e =>
-                      save(
-                        r.No_,
-                        "sell_price_avg",
-                        Number(e.target.value)
-                      )
-                    }
-                    style={{ width: 100 }}
-                  />
-                </td>
+        </div>
 
-                <td>{r.profit}</td>
+        {/* STICKY FOOTER — ALWAYS INSIDE PANEL */}
+        <div style={{
+          padding:3,
+          borderTop:"1px solid var(--border)",
+          background:"var(--card-bg)",
+          position:"sticky",
+          bottom:0
+        }}>
+          <button
+            style={{ width:"100%" }}
+            onClick={applyFilter}
+          >
+            ✅ Apply Filter
+          </button>
+        </div>
 
-                <td>{r.description}</td>
+      </div>
+    );
+  }
 
-                <td>{r.remark}</td>
+  /* ================= RENDER ================= */
 
-                <td>{r.localtion}</td>
+  return (
+    <div>
+      <h3>📚 Inventory Management</h3>
 
-                <td>
-                  <span
+      <table
+        width="100%"
+        cellPadding={6}
+        style={{ width:"100%", tableLayout:"fixed" }}
+      >
+        <thead>
+          <tr>
+                {columns.map(col => (
+                  <th
+                    key={col.key}
                     style={{
-                      padding: "4px 8px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                      background: "var(--card)"
+                      position:"relative",
+                      width:
+                        col.key === "name"
+                          ? "22%"        // name column gets ~2× width
+                          : col.key === "description"
+                          ? "8%"
+                          : "8%"
+                      ,
+                      textAlign: col.key === "No" ? "center" : "left"
                     }}
                   >
-                    {r.type}
-                  </span>
-                </td>
-              </tr>
+
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
+                  <span>{col.label}</span>
+
+                  {/* Google sheets icon */}
+                  <button
+                    onClick={e => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setOpenFilter({
+                        field:col.key,
+                        anchor:{ x:r.left, y:r.bottom }
+                      });
+                    }}
+                  >
+                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M3 4h18l-7 9v5l-4 2v-7L3 4z"/>
+                    </svg>
+                  </button>
+                </div>
+
+                {openFilter?.field === col.key && (
+                  <FilterPanel
+                    field={col.key}
+                    values={rows.map(r => r[col.key])}
+                    anchor={openFilter.anchor}
+                  />
+                )}
+              </th>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </tr>
+        </thead>
+
+        <tbody>
+          {filteredRows.map(r => (
+            <tr key={r.No_}>
+              {columns.map(col => (
+                <td key={col.key}>
+                  {col.readonly ? r[col.key] : (
+                    <input
+                      defaultValue={r[col.key]}
+                      style={{ width:"100%" }}
+                      type={NUMBER_FIELDS.has(col.key) ? "number" : "text"}
+                      onBlur={e =>
+                        save(
+                          r.No_,
+                          col.key,
+                          NUMBER_FIELDS.has(col.key)
+                            ? Number(e.target.value)
+                            : e.target.value
+                        )
+                      }
+                    />
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

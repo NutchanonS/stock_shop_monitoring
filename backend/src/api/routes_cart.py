@@ -7,4 +7,5 @@ svc = CartService()
 
 @router.post("/checkout")
 def checkout(body: CheckoutRequest):
+    print('========cehckout============')
     return svc.checkout(body.customer_id, [it.model_dump() for it in body.items])

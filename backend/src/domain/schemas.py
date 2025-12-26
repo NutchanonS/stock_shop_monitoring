@@ -41,3 +41,20 @@ class CheckoutResponse(BaseModel):
     sale_id: str
     ts: datetime
     total: float
+
+
+from pydantic import BaseModel
+from typing import Optional
+
+class ProductCreate(BaseModel):
+    name: str
+    piece_per_cost: Optional[int] = 1
+    number: int
+    cost: float
+    sell_price_lower: Optional[float] = 0
+    sell_price_avg: Optional[float] = 0
+    profit: Optional[float] = 0
+    description: Optional[str] = ""
+    remark: Optional[str] = ""
+    localtion: Optional[str] = ""  # keep column spelling
+    type: Optional[str] = ""

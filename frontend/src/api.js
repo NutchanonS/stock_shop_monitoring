@@ -29,4 +29,22 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     }).then(handle),
+
+  async createProduct(body) {
+    const res = await fetch(`${BASE}/inventory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    return handle(res);
+  },
+
+  async addStock(productNo, qty) {
+    const res = await fetch(
+      `${BASE}/inventory/${productNo}/add-stock?qty=${qty}`,
+      { method: "POST" }
+    );
+    return handle(res);
+  },
+
 };
