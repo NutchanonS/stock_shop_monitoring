@@ -86,17 +86,27 @@ class AnalyticsService:
         inv = pd.read_csv(settings.INVENTORY_CSV)
 
         sales["ts"] = pd.to_datetime(sales["ts"], utc=True)
+
+        # ⬅️ include product type + misc metadata
+        inv_cols = [
+            "No_",
+            "name",
+            "type",
+            "cost"
+        ]
+
         sales = sales.merge(
-            inv[["No_", "cost", "name"]],
+            inv[inv_cols],
             left_on="product_no",
             right_on="No_",
             how="left"
         )
 
-        sales["cost_total"] = sales["qty"] * sales["cost"]
+        sales["cost_total"] = sales["qty"] * sales["cost"].fillna(0)
         sales["profit"] = sales["total_line"] - sales["cost_total"]
 
         return sales
+
     
     def sales_timeseries(self, period: str = "day"):
         s = self._load_sales_with_cost()
@@ -113,20 +123,35 @@ class AnalyticsService:
         ).reset_index().sort_values("period")
 
         return g.to_dict("records")
-
-    def top_products(self, period: str = "month"):
+    
+    def top_products(self, period: str = "month", month: str | None = None):
         s = self._load_sales_with_cost()
 
+        # ---------- period bucketing ----------
         if period == "week":
             s["period"] = s["ts"].dt.to_period("W").astype(str)
         else:
             s["period"] = s["ts"].dt.to_period("M").astype(str)
 
-        g = s.groupby(["product_name"]).agg(
-            units=("qty", "sum"),
-            revenue=("total_line", "sum")
-        ).reset_index()
+        # ---------- filter specific month if provided ----------
+        if month:
+            s = s[s["period"] == month]
 
-        top5 = g.sort_values("revenue", ascending=False).head(5)
+        # ---------- aggregate ----------
+        g = (
+            s.groupby(["product_name", "type"])
+             .agg(
+                units=("qty", "sum"),
+                revenue=("total_line", "sum"),
+                cost_total=("cost_total", "sum"),
+                profit=("profit", "sum"),
+             )
+             .reset_index()
+        )
 
-        return top5.to_dict("records")
+        top = (
+            g.sort_values("revenue", ascending=False)
+             .head(7)
+        )
+
+        return self._clean(top)

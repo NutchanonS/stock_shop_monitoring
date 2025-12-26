@@ -1,41 +1,53 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../api.js";
 
 export default function POS() {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
 
-  const [carts, setCarts] = useState({
-    "walkin-1": []
-  });
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggest, setShowSuggest] = useState(false);
+
+  const [carts, setCarts] = useState({ "walkin-1": [] });
   const [activeCart, setActiveCart] = useState("walkin-1");
   const [newCartName, setNewCartName] = useState("");
 
-  /* ---------------- SEARCH ---------------- */
+  /* ---------------- LIVE SUGGEST (AUTOCOMPLETE) ---------------- */
+  useEffect(() => {
+    if (!q.trim()) {
+      setSuggestions([]);
+      setShowSuggest(false);
+      return;
+    }
+
+    // small debounce
+    const t = setTimeout(async () => {
+      const res = await api.searchProducts({ q });
+      setSuggestions(res.slice(0, 10));   // limit to 10
+      setShowSuggest(true);
+    }, 180);
+
+    return () => clearTimeout(t);
+  }, [q]);
+
+  /* ---------------- MANUAL SEARCH (ENTER BUTTON) ---------------- */
   async function search() {
-    setRows(await api.searchProducts({ q }));
+    const res = await api.searchProducts({ q });
+    setRows(res);
+    setShowSuggest(false);
   }
 
   /* ---------------- CART OPS ---------------- */
   function addToCart(cartId, product) {
     const stock = Number(product.number);
-    if (stock <= 0) {
-      alert(`❌ "${product.name}" is out of stock`);
-      return;
-    }
+    if (stock <= 0) return;
 
     setCarts(prev => {
       const cur = prev[cartId] ?? [];
       const found = cur.find(i => i.product_no === product.No_);
+      const price = Number(product.sell_price_avg ?? 0);
 
-      const price = Number(
-        product.sell_price_avg ?? product.sell_price_lower ?? 0
-      );
-
-      if (found && found.qty + 1 > stock) {
-        alert(`⚠️ Cannot add more than stock (${stock})`);
-        return prev;
-      }
+      if (found && found.qty + 1 > stock) return prev;
 
       const next = found
         ? cur.map(i =>
@@ -50,7 +62,7 @@ export default function POS() {
               name: product.name,
               qty: 1,
               unit_price: price,
-              stock // keep snapshot
+              stock
             }
           ];
 
@@ -58,6 +70,16 @@ export default function POS() {
     });
   }
 
+  function updateQty(cartId, productNo, qty) {
+    setCarts(prev => ({
+      ...prev,
+      [cartId]: prev[cartId].map(i =>
+        i.product_no === productNo
+          ? { ...i, qty: Math.min(Math.max(1, qty), i.stock) }
+          : i
+      )
+    }));
+  }
 
   function removeItem(cartId, productNo) {
     setCarts(prev => ({
@@ -65,26 +87,6 @@ export default function POS() {
       [cartId]: prev[cartId].filter(i => i.product_no !== productNo)
     }));
   }
-
-  function updateQty(cartId, productNo, qty) {
-    setCarts(prev => {
-      const cur = prev[cartId] ?? [];
-
-      const next = cur.map(i => {
-        if (i.product_no !== productNo) return i;
-
-        const safeQty = Math.min(
-          Math.max(1, Number(qty || 1)),
-          Number(i.stock ?? i.qty)
-        );
-
-        return { ...i, qty: safeQty };
-      });
-
-      return { ...prev, [cartId]: next };
-    });
-  }
-
 
   function addNewCart() {
     if (!newCartName || carts[newCartName]) return;
@@ -95,14 +97,10 @@ export default function POS() {
 
   function removeCart(cartId) {
     if (Object.keys(carts).length === 1) return;
-    setCarts(prev => {
-      const next = { ...prev };
-      delete next[cartId];
-      return next;
-    });
-    if (activeCart === cartId) {
-      setActiveCart(Object.keys(carts).find(k => k !== cartId));
-    }
+    const next = { ...carts };
+    delete next[cartId];
+    setCarts(next);
+    setActiveCart(Object.keys(next)[0]);
   }
 
   async function checkout(cartId) {
@@ -118,151 +116,174 @@ export default function POS() {
       }))
     });
 
-    alert(`Checkout success: ${cartId}`);
     setCarts(prev => ({ ...prev, [cartId]: [] }));
   }
 
   const activeItems = carts[activeCart] ?? [];
-  const total = activeItems.reduce(
-    (s, i) => s + i.qty * i.unit_price,
-    0
-  );
+  const total = activeItems.reduce((s, i) => s + i.qty * i.unit_price, 0);
 
-  /* ---------------- UI ---------------- */
+  /* ========================= UI ========================= */
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }}>
-      {/* ================= SEARCH ================= */}
-      <div>
-        <h3>🔍 Search Product</h3>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <input
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder="search name..."
-            style={{ flex: 1 }}
-          />
-          <button onClick={search}>Search</button>
+    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24 }}>
+      {/* SEARCH */}
+      <div className="card">
+        <div className="section-title">
+          <h3>🔍 Product Search</h3>
         </div>
 
-        <div style={{ marginBottom: 10 }}>
-          <b>Add to cart:</b>{" "}
-          <select
-            value={activeCart}
-            onChange={e => setActiveCart(e.target.value)}
-          >
-            {Object.keys(carts).map(cid => (
-              <option key={cid} value={cid}>
-                {cid}
-              </option>
-            ))}
-          </select>
+        <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              onFocus={() => suggestions.length && setShowSuggest(true)}
+              placeholder="Search product name / type..."
+              style={{ flex: 1 }}
+            />
+            <button onClick={search}>Search</button>
+          </div>
+
+          {/* ---------- AUTOCOMPLETE DROPDOWN ---------- */}
+          {showSuggest && suggestions.length > 0 && (
+            <div
+              className="card"
+              style={{
+                position: "absolute",
+                top: 44,
+                left: 0,
+                right: 0,
+                maxHeight: 260,
+                overflowY: "auto",
+                zIndex: 20
+              }}
+            >
+              {suggestions.map(p => {
+                const stock = Number(p.number);
+                const inCart =
+                  carts[activeCart]?.find(i => i.product_no === p.No_)
+                    ?.qty ?? 0;
+
+                return (
+                  <div
+                    key={p.No_}
+                    style={{
+                      padding: 10,
+                      borderBottom: "1px solid var(--border)",
+                      cursor: stock > 0 ? "pointer" : "not-allowed",
+                      opacity: stock > 0 ? 1 : 0.5
+                    }}
+                    onClick={() => {
+                      if (stock <= 0) return;
+                      addToCart(activeCart, p);
+                      setShowSuggest(false);
+                    }}
+                  >
+                    <b>{p.name}</b>
+
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                      Stock: {stock} • In cart: {inCart}
+                    </div>
+
+                    <div style={{ fontSize: 12 }}>
+                      Price: {p.sell_price_avg} • Type: {p.type}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
+        {/* ---------- SEARCH RESULTS ---------- */}
         {rows.map(p => {
           const stock = Number(p.number);
-
-          const cartItem = carts[activeCart]?.find(
-            i => i.product_no === p.No_
-          );
-          const cartQty = cartItem?.qty ?? 0;
-
-          const outOfStock = stock <= 0;
-          const maxReached = cartQty >= stock;
+          const cartQty =
+            carts[activeCart]?.find(i => i.product_no === p.No_)?.qty ?? 0;
 
           return (
             <div
               key={p.No_}
-              style={{
-                border: "1px solid #eee",
-                borderRadius: 8,
-                padding: 8,
-                marginBottom: 6
-              }}
+              style={{ padding: 12, borderBottom: "1px solid var(--border)" }}
             >
               <b>{p.name}</b>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Stock: {stock} | In cart: {cartQty}
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                Stock: {stock} • In cart: {cartQty}
               </div>
 
-              Price: {p.sell_price_avg}
-              <br />
-
               <button
-                disabled={outOfStock || maxReached}
+                disabled={stock <= 0 || cartQty >= stock}
                 onClick={() => addToCart(activeCart, p)}
-                style={{
-                  opacity: outOfStock || maxReached ? 0.4 : 1,
-                  cursor: outOfStock || maxReached ? "not-allowed" : "pointer"
-                }}
               >
-                {outOfStock
-                  ? "❌ Out of stock"
-                  : maxReached
-                  ? "⚠️ Max stock reached"
-                  : `➕ Add to ${activeCart}`}
+                {stock <= 0 ? "Out of stock" : "Add"}
               </button>
             </div>
           );
         })}
-
       </div>
 
-      {/* ================= CART ================= */}
-      <div>
-        <h3>🛒 Cart</h3>
-
-        {/* Cart switcher */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          <select
-            value={activeCart}
-            onChange={e => setActiveCart(e.target.value)}
-            style={{ flex: 1 }}
-          >
-            {Object.keys(carts).map(cid => (
-              <option key={cid} value={cid}>
-                {cid}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => removeCart(activeCart)}>🗑</button>
+      {/* CART */}
+      <div className="card">
+        <div className="section-title">
+          <h3>🛒 Cart</h3>
         </div>
 
-        {/* Add new cart */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <select
+          value={activeCart}
+          onChange={e => setActiveCart(e.target.value)}
+        >
+          {Object.keys(carts).map(cid => (
+            <option key={cid}>{cid}</option>
+          ))}
+        </select>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <input
             value={newCartName}
             onChange={e => setNewCartName(e.target.value)}
-            placeholder="new cart id"
-            style={{ flex: 1 }}
+            placeholder="New cart ID"
           />
-          <button onClick={addNewCart}>➕ New</button>
+          <button onClick={addNewCart}>Add</button>
+          <button className="danger" onClick={() => removeCart(activeCart)}>
+            Delete
+          </button>
         </div>
 
-        {/* Cart items */}
         {activeItems.map(i => (
-          <div key={i.product_no} style={{ marginBottom: 6 }}>
+          <div key={i.product_no} style={{ marginTop: 10 }}>
             <b>{i.name}</b>
-            <br />
-            Qty:
-            <input
-              value={i.qty}
-              onChange={e =>
-                updateQty(activeCart, i.product_no, e.target.value)
-              }
-              style={{ width: 60, marginLeft: 6 }}
-            />
-            <button onClick={() => removeItem(activeCart, i.product_no)}>
-              ❌
-            </button>
+
+            <div>
+              Qty:
+              <input
+                value={i.qty}
+                onChange={e =>
+                  updateQty(
+                    activeCart,
+                    i.product_no,
+                    Number(e.target.value)
+                  )
+                }
+                style={{ width: 60, marginLeft: 6 }}
+              />
+              <button
+                className="danger"
+                onClick={() => removeItem(activeCart, i.product_no)}
+              >
+                X
+              </button>
+            </div>
           </div>
         ))}
 
         <hr />
         <b>Total: {total}</b>
-        <br />
-        <button onClick={() => checkout(activeCart)}>
-          ✅ Checkout {activeCart}
+
+        <button
+          onClick={() => checkout(activeCart)}
+          style={{ width: "100%", marginTop: 8 }}
+        >
+          Checkout
         </button>
       </div>
     </div>

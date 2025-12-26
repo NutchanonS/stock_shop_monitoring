@@ -6,9 +6,9 @@ class InventoryService:
 
     def search(self, q: str | None, type_: str | None):
         df = self.repo.search(q, type_)
-        print('--------from inventory service---------')
-        print(df.to_dict(orient="records"))
-        print('------------')
+        # print('--------from inventory service---------')
+        # print(df.to_dict(orient="records"))
+        # print('------------')
         return df.to_dict(orient="records")
 
     def update(self, product_no: int, updates: dict):

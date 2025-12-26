@@ -1,16 +1,32 @@
 :root {
+  /* 🌞 LIGHT MODE */
   --bg: #f7f8fa;
   --card: #ffffff;
   --border: #e5e7eb;
   --text: #111827;
-  --muted: #6b7280;
+  --muted: #9ca3af;
 
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
-  --danger: #dc2626;
+  --danger: #ef4444;
 
   --radius: 14px;
   --shadow: 0 8px 24px rgba(0,0,0,0.06);
+}
+
+/* 🌙 DARK MODE */
+[data-theme="dark"] {
+  --bg: #0b0f19;
+  --card: #111827;
+  --border: #1f2937;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --danger: #f87171;
+
+  --shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
 * {
@@ -24,13 +40,14 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
-/* Inputs */
+/* ---------- Inputs ---------- */
 input, select {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
   font-size: 14px;
-  background: white;
+  background: var(--card);
+  color: var(--text);
 }
 
 input:focus, select:focus {
@@ -38,7 +55,7 @@ input:focus, select:focus {
   border-color: var(--primary);
 }
 
-/* Buttons */
+/* ---------- Buttons ---------- */
 button {
   padding: 10px 14px;
   border-radius: 10px;
@@ -62,7 +79,7 @@ button.danger {
   background: var(--danger);
 }
 
-/* Card */
+/* ---------- Cards ---------- */
 .card {
   background: var(--card);
   border-radius: var(--radius);
@@ -70,7 +87,7 @@ button.danger {
   padding: 18px;
 }
 
-/* Table */
+/* ---------- Tables ---------- */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -87,12 +104,42 @@ th {
 td {
   padding: 12px 6px;
   border-bottom: 1px solid var(--border);
+  font-size: 14px;
 }
 
-/* Section header */
+/* ---------- Section Headers ---------- */
 .section-title {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 14px;
+}
+/* ---------- Tabs ---------- */
+
+.tabs-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.tab-btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  border-color: var(--primary);
+}
+
+/* ACTIVE TAB */
+.tab-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
 }
