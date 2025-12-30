@@ -1,0 +1,3 @@
+sale_id,ts,customer_id,product_no,product_name,product_type,qty,unit_price,total_line
+a4dd8a03-c38d-45e9-8f1d-d23153ae814d,2025-12-30T07:21:47.343488+00:00,walkin-1,2,ไมค์ลอย mba 888a (U1),MICROPHONE,1,1900.0,1900.0
+50fc2c70-7cfc-4782-8739-b95c897120f8,2025-12-30T07:23:38.686844+00:00,walkin-1,3,ไมค์ลอย sound milan ml-6675,MICROPHONE,1,1800.0,1800.0

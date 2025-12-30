@@ -9,6 +9,14 @@ export const api = {
   get: (path) =>
     fetch(`${BASE}${path}`).then(handle),
 
+  deleteProducts: (ids) =>
+    fetch(`${BASE}/inventory/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ids)
+    }).then(handle),
+
+
   searchProducts: ({ q, type }) => {
     const url = new URL(`${BASE}/inventory/search`);
     if (q) url.searchParams.set("q", q);
@@ -46,5 +54,9 @@ export const api = {
     );
     return handle(res);
   },
+  returnBrokenStock: (productNo, qty) =>
+    fetch(`${BASE}/inventory/${productNo}/return-broken?qty=${qty}`, {
+      method: "POST"
+    }).then(handle),
 
 };

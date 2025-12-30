@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from src.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -19,3 +19,23 @@ def timeseries(period: str = "day"):
 @router.get("/top-products")
 def top_products(period: str = "month"):
     return svc.top_products(period)
+
+@router.get("/sales-latest-date")
+def get_latest_sales_date():
+    """
+    Returns most recent sale date from sales.csv
+    Used to auto-select default dashboard period
+    """
+    return svc.get_latest_sales_date()
+
+
+@router.get("/sales-detail")
+def get_sales_detail(
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end: str = Query(..., description="YYYY-MM-DD")
+):
+    """
+    Returns aggregated sales rows for a date range
+    Grouped by product
+    """
+    return svc.get_sales_detail(start, end)

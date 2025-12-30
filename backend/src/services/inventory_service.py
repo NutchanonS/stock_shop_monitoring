@@ -19,3 +19,9 @@ class InventoryService:
 
     def add_stock(self, product_no: int, qty: int):
         return {"stock": self.repo.increment_stock(product_no, qty)}
+
+    def delete_many(self, ids: list[int]):
+        return self.repo.delete_products(ids)
+    
+    def decrement_stock(self, product_no: int, qty: int):
+        return self.repo.decrement_stock(product_no, qty)

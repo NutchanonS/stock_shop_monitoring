@@ -24,3 +24,18 @@ def create(body: ProductCreate):
 def add_stock(product_no: int, qty: int):
     print('//////// add stock //////////')
     return svc.add_stock(product_no, qty)
+
+@router.post("/delete")
+def delete_products(ids: list[int]):
+    """
+    Bulk delete products by No_
+    Body example: [1,2,3]
+    """
+    print('//////// delete //////////')
+    deleted = svc.delete_many(ids)
+    return {"deleted": deleted}
+
+@router.post("/{product_no}/return-broken")
+def return_broken(product_no: int, qty: int):
+    print("//// RETURN BROKEN ////")
+    return svc.decrement_stock(product_no, qty)

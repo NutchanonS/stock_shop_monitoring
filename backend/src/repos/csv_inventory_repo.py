@@ -11,7 +11,9 @@ class CsvInventoryRepo:
         self.path = path
 
     def read_df(self) -> pd.DataFrame:
-        return pd.read_csv(self.path)
+        df = pd.read_csv(self.path)
+        df = df.fillna('null')
+        return df
 
     def write_df(self, df: pd.DataFrame) -> None:
         df.to_csv(self.path, index=False)
@@ -19,10 +21,10 @@ class CsvInventoryRepo:
     def search(self, q: Optional[str], type_: Optional[str]) -> pd.DataFrame:
         # print('------------from CsvInventoryRepo:----------------')
         df = self.read_df()
-        try:
-            df = df.sort_values('type').reset_index(drop=True)
-        except:
-            pass
+        # try:
+        #     df = df.sort_values('type').reset_index(drop=True)
+        # except:
+        #     pass
 
         # df['No_'] = df.index + 1
         df = df.fillna('null')
@@ -109,3 +111,37 @@ class CsvInventoryRepo:
         print('==============increment3', df.head(2),'=================')
         return {"ok": True, "new_stock": df.at[i, "number"]}
 
+
+    def delete_products(self, ids: list[int]):
+        os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+
+        with file_lock(LOCK_FILE):
+            df = self.read_df()
+
+            before = len(df)
+
+            df = df[~df["No_"].isin(ids)].copy()
+
+            # reassign No_
+            # df["No_"] = range(1, len(df)+1)
+
+            self.write_df(df)
+
+        return before - len(df)
+
+    def decrement_stock(self, product_no:int, qty:int):
+        df = self.read_df()
+
+        row = df[df["No_"] == product_no]
+        if row.empty:
+            raise KeyError("Product not found")
+
+        idx = row.index[0]
+        current = int(df.at[idx, "number"])
+
+        new_stock = max(0, current - qty)
+        df.at[idx, "number"] = new_stock
+
+        self.write_df(df)
+
+        return {"before": current, "after": new_stock}

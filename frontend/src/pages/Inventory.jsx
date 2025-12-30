@@ -14,14 +14,38 @@ export default function Inventory() {
 
   const [openFilter, setOpenFilter] = useState(null);
 
+  /* ---------- selection state ---------- */
+  const [selected, setSelected] = useState(new Set());
+
   async function load() {
     setRows(await api.searchProducts({}));
+    setSelected(new Set());   // clear selections on reload
   }
 
   useEffect(() => { load(); }, []);
 
   async function save(no, field, value) {
     await api.updateProduct(no, { [field]: value });
+    load();
+  }
+
+  function toggleSelect(no) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(no) ? next.delete(no) : next.add(no);
+      return next;
+    });
+  }
+
+  async function deleteSelected() {
+    if (!selected.size) return;
+
+    if (!confirm(`Delete ${selected.size} product(s)?`)) return;
+
+    // send JSON array body: [1,2,3,...]
+    await api.deleteProducts(Array.from(selected));
+
+    setSelected(new Set());
     load();
   }
 
@@ -139,8 +163,6 @@ export default function Inventory() {
       if (e.key === "Enter") applyFilter();
     }
 
-    /* ---- VIEWPORT SAFE POSITIONING ---- */
-
     useEffect(() => {
       if (!ref.current) return;
 
@@ -169,17 +191,13 @@ export default function Inventory() {
           position: "fixed",
           left: pos.left,
           top: pos.top,
-
-          /* responsive + fits condition input width */
           minWidth: 300,
           width: "max-content",
           maxWidth: 440,
-
           maxHeight: 480,
           zIndex: 90,
           display: "flex",
           flexDirection: "column",
-
           background: "var(--panel-bg, #0f172a)",
           border: "1px solid var(--border)",
           color: "var(--text-primary)",
@@ -197,31 +215,22 @@ export default function Inventory() {
           }}
         >
           <div
-            // style={{
-            //   fontSize: 16,
-            //   fontWeight: 700,
-            //   letterSpacing: ".2px",
-            //   color: "var(--accent, #38bdf8)",
-            //   borderBottom: "2px solid var(--accent, #38bdf8)",
-            //   paddingBottom: 2
-            // }}
             style={{
               fontSize: 16,
               fontWeight: 700,
               color: "var(--accent)",
               paddingBottom: 2
-            }}            
+            }}
           >
             {fieldLabel}
           </div>
+
           <div style={{ display:"flex", gap:8 }}>
-            <button onClick={() => clearFilter(fieldLabel)}>Clear</button>
+            <button onClick={() => clearFilter(field)}>Clear</button>
             <button onClick={clearAllFilters}>Clear ALL</button>
           </div>
         </div>
 
-
-        {/* SCROLLABLE BODY */}
         <div style={{
           padding:10,
           overflowY:"auto",
@@ -231,7 +240,6 @@ export default function Inventory() {
           minWidth: 100
         }}>
 
-          {/* SORT */}
           <div>
             <div style={{ fontSize:12, opacity:.8 }}>Sort</div>
 
@@ -241,7 +249,6 @@ export default function Inventory() {
             </div>
           </div>
 
-          {/* VALUE CHECKBOX */}
           <div>
             <div style={{ fontSize:12, opacity:.8 }}>Filter by values</div>
 
@@ -256,6 +263,7 @@ export default function Inventory() {
                       e.target.checked ? set.add(v) : set.delete(v);
                       setDraft(d => ({ ...d, values:set }));
                     }}
+                    style={{ width: 16, height: 16 }}
                   />
                   {v || "(empty)"}
                 </label>
@@ -263,49 +271,35 @@ export default function Inventory() {
             </div>
           </div>
 
-          {/* TEXT FILTER */}
           {!NUMBER_FIELDS.has(field) && (
             <div>
               <div style={{ fontSize:12, opacity:.8 }}>Text contains</div>
-              {/* <input
-                value={draft.textContains}
-                onChange={e => setDraft(d=>({ ...d, textContains:e.target.value }))}
-                onKeyDown={handleEnter}
-              /> */}
               <input
                 value={draft.textContains}
                 onChange={e =>
                   setDraft(d => ({ ...d, textContains:e.target.value }))
                 }
                 onKeyDown={handleEnter}
-                style={{
-                  width: "100%",        // 👈 FULL WIDTH
-                  boxSizing: "border-box"
-                }}
+                style={{ width:"100%", boxSizing:"border-box" }}
               />
-
             </div>
           )}
 
-          {/* NUMBER FILTER */}
           {NUMBER_FIELDS.has(field) && (
             <div>
               <div style={{ fontSize:12, opacity:.8 }}>Number condition</div>
 
-              {/* <div style={{ display:"flex", gap:6, marginTop:4 }}> */}
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "90px 1fr", // 👈 operator fixed, value fills space
-                  gap: 6,
-                  marginTop: 4
+                  display:"grid",
+                  gridTemplateColumns:"90px 1fr",
+                  gap:6,
+                  marginTop:4
                 }}
               >
-
                 <select
                   value={draft.numOp}
-                  onChange={e => setDraft(d=>({ ...d, numOp:e.target.value }))}
-                >
+                  onChange={e => setDraft(d=>({ ...d, numOp:e.target.value }))}>
                   <option value=">">&gt;</option>
                   <option value="<">&lt;</option>
                   <option value=">=">&gt;=</option>
@@ -313,12 +307,6 @@ export default function Inventory() {
                   <option value="=">=</option>
                 </select>
 
-                {/* <input
-                  type="number"
-                  value={draft.numValue}
-                  onChange={e => setDraft(d=>({ ...d, numValue:e.target.value }))}
-                  onKeyDown={handleEnter}
-                /> */}
                 <input
                   type="number"
                   value={draft.numValue}
@@ -326,19 +314,14 @@ export default function Inventory() {
                     setDraft(d => ({ ...d, numValue:e.target.value }))
                   }
                   onKeyDown={handleEnter}
-                  style={{
-                    width: "100%",         // 👈 fill remaining width
-                    boxSizing: "border-box"
-                  }}
+                  style={{ width:"100%", boxSizing:"border-box" }}
                 />
-
               </div>
             </div>
           )}
 
         </div>
 
-        {/* STICKY FOOTER — ALWAYS INSIDE PANEL */}
         <div style={{
           padding:3,
           borderTop:"1px solid var(--border)",
@@ -346,14 +329,10 @@ export default function Inventory() {
           position:"sticky",
           bottom:0
         }}>
-          <button
-            style={{ width:"100%" }}
-            onClick={applyFilter}
-          >
+          <button style={{ width:"100%" }} onClick={applyFilter}>
             ✅ Apply Filter
           </button>
         </div>
-
       </div>
     );
   }
@@ -362,7 +341,24 @@ export default function Inventory() {
 
   return (
     <div>
-      <h3>📚 Inventory Management</h3>
+
+      <div
+        style={{
+          display:"flex",
+          justifyContent:"space-between",
+          marginBottom:8
+        }}
+      >
+        <h3>📚 Inventory Management</h3>
+
+        <button
+          className="danger"
+          disabled={!selected.size}
+          onClick={deleteSelected}
+        >
+          🗑 Delete Selected ({selected.size})
+        </button>
+      </div>
 
       <table
         width="100%"
@@ -371,26 +367,43 @@ export default function Inventory() {
       >
         <thead>
           <tr>
-                {columns.map(col => (
-                  <th
-                    key={col.key}
-                    style={{
-                      position:"relative",
-                      width:
-                        col.key === "name"
-                          ? "22%"        // name column gets ~2× width
-                          : col.key === "description"
-                          ? "8%"
-                          : "8%"
-                      ,
-                      textAlign: col.key === "No" ? "center" : "left"
-                    }}
-                  >
+
+            {/* CHECKBOX COLUMN */}
+            <th style={{ width:40, textAlign:"center" }}>
+              <input
+                type="checkbox"
+                checked={
+                  filteredRows.length > 0 &&
+                  filteredRows.every(r => selected.has(r.No_))
+                }
+                onChange={e => {
+                  if (e.target.checked)
+                    setSelected(new Set(filteredRows.map(r => r.No_)));
+                  else
+                    setSelected(new Set());
+                }}
+                style={{ width: 18, height: 18 }}
+              />
+            </th>
+
+            {columns.map(col => (
+              <th
+                key={col.key}
+                style={{
+                  position:"relative",
+                  width:
+                    col.key === "name"
+                      ? "22%"
+                      : col.key === "description"
+                      ? "8%"
+                      : "8%",
+                  textAlign: col.key === "No" ? "center" : "left"
+                }}
+              >
 
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
                   <span>{col.label}</span>
 
-                  {/* Google sheets icon */}
                   <button
                     onClick={e => {
                       const r = e.currentTarget.getBoundingClientRect();
@@ -421,6 +434,17 @@ export default function Inventory() {
         <tbody>
           {filteredRows.map(r => (
             <tr key={r.No_}>
+
+              {/* ROW CHECKBOX */}
+              <td style={{ textAlign:"center" }}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(r.No_)}
+                  onChange={() => toggleSelect(r.No_)}
+                  style={{ width: 18, height: 18 }}
+                />
+              </td>
+
               {columns.map(col => (
                 <td key={col.key}>
                   {col.readonly ? r[col.key] : (

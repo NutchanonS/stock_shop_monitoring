@@ -20,7 +20,9 @@ export default function Dashboard() {
 
   const [valueMetric, setValueMetric] = useState("revenue");
 
-  /* ---------- Load time series ---------- */
+  /* =====================================================
+     LOAD TIME SERIES
+     ===================================================== */
   useEffect(() => {
     api.get(`/analytics/timeseries?period=${timePeriod}`)
       .then(setTimeSeries);
@@ -31,7 +33,9 @@ export default function Dashboard() {
     [timeSeries]
   );
 
-  /* ---------- Load month list ---------- */
+  /* =====================================================
+     LOAD MONTH LIST (FOR TOP PRODUCTS)
+     ===================================================== */
   useEffect(() => {
     api.get("/analytics/timeseries?period=month")
       .then(monthData => {
@@ -44,7 +48,9 @@ export default function Dashboard() {
       });
   }, []);
 
-  /* ---------- Load top products ---------- */
+  /* =====================================================
+     LOAD TOP PRODUCTS FOR SELECTED MONTH
+     ===================================================== */
   useEffect(() => {
     if (!selectedMonth) return;
 
@@ -55,7 +61,7 @@ export default function Dashboard() {
 
 
   /* =====================================================
-     AGGREGATE BY PRODUCT TYPE
+     AGGREGATE BY PRODUCT TYPE (PIE CHART)
      ===================================================== */
   const pieTypeData = useMemo(() => {
 
@@ -92,16 +98,12 @@ export default function Dashboard() {
 
   }, [topProducts]);
 
-
-  /* ---------- helpers ---------- */
   const formatNumber = v =>
     new Intl.NumberFormat("en-US").format(Math.round(v ?? 0));
 
-  const sumField = (data, field) =>
-    data.reduce((s,r)=> s + Number(r[field] ?? 0), 0);
+  const sumField = (rows, f) =>
+    rows.reduce((s,r)=> s + Number(r[f] ?? 0), 0);
 
-
-  /* ---------- TOP-5 lists ---------- */
   const top5Units = [...pieTypeData]
     .sort((a,b)=> b.units - a.units)
     .slice(0,5)
@@ -114,13 +116,8 @@ export default function Dashboard() {
 
 
   /* =====================================================
-     LABEL RENDERER (SMART + SAFE)
-     - auto hide when many slices
-     - prevent overflow
-     - wraps long text
-     - adds percentage
+     SMART PIE LABEL RENDERER
      ===================================================== */
-
   const wrapText = (name, maxLen = 10) => {
     if (name.length <= maxLen) return [name];
     const words = name.split(" ");
@@ -130,26 +127,22 @@ export default function Dashboard() {
       if ((line + " " + w).trim().length > maxLen) {
         lines.push(line.trim());
         line = w;
-      } else {
-        line += " " + w;
-      }
+      } else line += " " + w;
     }
     if (line) lines.push(line.trim());
-    return lines.slice(0, 2); // cap to 2 lines
+    return lines.slice(0, 2);
   };
 
   const renderTop5Label = (props, field, topList) => {
-    const { name, value, cx, cy, midAngle, outerRadius, percent, index } = props;
+    const { name, value, cx, cy, midAngle, outerRadius, percent } = props;
 
-    // ---------- AUTO-HIDE rules ----------
     const tooManySlices = pieTypeData.length > 8;
-    const sliceTooSmall = percent < 0.04; // < 4%
+    const sliceTooSmall = percent < 0.04;
     const notTop = !topList.includes(name);
 
     if (tooManySlices && notTop) return null;
     if (sliceTooSmall && notTop) return null;
 
-    // ---------- label position ----------
     const RAD = Math.PI / 180;
     const radius = outerRadius + 22;
     const x = cx + radius * Math.cos(-midAngle * RAD);
@@ -159,34 +152,75 @@ export default function Dashboard() {
     const pct = (percent * 100).toFixed(1);
 
     return (
-      <text
-        x={x}
-        y={y}
-        textAnchor="middle"
-        style={{
-          fill: "#e5e7eb",
-          fontSize: 13,
-          fontWeight: 600
-        }}
-      >
-        {lines.map((ln, i)=>(
-          <tspan
-            key={i}
-            x={x}
-            dy={i === 0 ? 0 : "1.2em"}
-          >{ln}</tspan>
+      <text x={x} y={y} textAnchor="middle"
+        style={{ fill:"#e5e7eb", fontSize:13, fontWeight:600 }}>
+        {lines.map((ln,i)=>(
+          <tspan key={i} x={x} dy={i===0?0:"1.2em"}>{ln}</tspan>
         ))}
-        <tspan
-          x={x}
-          dy="1.2em"
-          style={{ fontSize: 12, fontWeight: 400 }}
-        >
-          {formatNumber(value)}  ({pct}%)
+        <tspan x={x} dy="1.2em"
+          style={{ fontSize:12, fontWeight:400 }}>
+          {formatNumber(value)} ({pct}%)
         </tspan>
       </text>
     );
   };
 
+
+  /* =====================================================
+     🎯 SALES DETAIL (FROM sales.csv)
+     ===================================================== */
+
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  const [salesRows, setSalesRows] = useState([]);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 10;
+
+  /* ---------- load latest sales day on mount ---------- */
+  useEffect(() => {
+    async function loadLatestDate() {
+      const res = await api.get("/analytics/sales-latest-date");
+
+      if (res?.latest_date) {
+        setStartDate(res.latest_date);
+        setEndDate(res.latest_date);
+
+        loadSalesRange(res.latest_date, res.latest_date);
+      }
+    }
+
+    loadLatestDate();
+  }, []);
+
+  async function loadSalesRange(start = startDate, end = endDate) {
+    if (!start || !end) return;
+
+    const res = await api.get(
+      `/analytics/sales-detail?start=${start}&end=${end}`
+    );
+
+    setSalesRows(res || []);
+    setPage(0);
+  }
+
+  const pagedRows = useMemo(
+    () => salesRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [salesRows, page]
+  );
+
+  const totals = useMemo(() => ({
+    units: sumField(salesRows, "units_sold"),
+    cost: sumField(salesRows, "cost_total"),
+    sellLower: sumField(salesRows, "sell_lower_total"),
+    sellAvg: sumField(salesRows, "sell_avg_total"),
+    profit: sumField(salesRows, "profit_total")
+  }), [salesRows]);
+
+
+  /* =====================================================
+     UI
+     ===================================================== */
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -240,7 +274,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-
+        {/* ---------- CHART LAYOUT ---------- */}
         <div
           style={{
             display: "grid",
@@ -249,27 +283,20 @@ export default function Dashboard() {
             alignItems: "start"
           }}
         >
-
-          {/* ---------- LEFT — PIE CHARTS ---------- */}
+          {/* LEFT PIE CHARTS */}
           <div style={{ display:"grid", gap:22 }}>
 
-            {/* PIE 1 — UNITS */}
             <div>
               <h4>🛒 Units Sold — by Type</h4>
-
-              <ResponsiveContainer
-                width="100%"
-                height={210}         // ⬆️ increased height
-                style={{ overflow:"visible" }}
-              >
+              <ResponsiveContainer width="100%" height={210}>
                 <PieChart>
                   <Pie
                     data={pieTypeData}
                     dataKey="units"
                     nameKey="type"
                     innerRadius={45}
-                    outerRadius={70} // ⬆️ larger radius
-                    label={p => renderTop5Label(p, "units", top5Units)}
+                    outerRadius={70}
+                    label={p => renderTop5Label(p,"units",top5Units)}
                     labelLine={false}
                   >
                     {pieTypeData.map((e,i)=>(
@@ -282,20 +309,14 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* PIE 2 — SELECTED METRIC */}
             <div>
               <h4>
                 💰 {valueMetric === "revenue" ? "Revenue"
                    : valueMetric === "profit" ? "Profit"
-                   : "Cost"
-                } — by Type
+                   : "Cost"} — by Type
               </h4>
 
-              <ResponsiveContainer
-                width="100%"
-                height={210}
-                style={{ overflow:"visible" }}
-              >
+              <ResponsiveContainer width="100%" height={210}>
                 <PieChart>
                   <Pie
                     data={pieTypeData}
@@ -303,7 +324,7 @@ export default function Dashboard() {
                     nameKey="type"
                     innerRadius={45}
                     outerRadius={70}
-                    label={p => renderTop5Label(p, valueMetric, top5Metric)}
+                    label={p => renderTop5Label(p,valueMetric,top5Metric)}
                     labelLine={false}
                   >
                     {pieTypeData.map((e,i)=>(
@@ -318,16 +339,8 @@ export default function Dashboard() {
 
           </div>
 
-
-          {/* ---------- RIGHT — BAR CHART ---------- */}
-          <div
-            style={{
-              display:"grid",
-              gap:8,
-              alignSelf:"center"
-            }}
-          >
-
+          {/* RIGHT BAR CHART */}
+          <div style={{ display:"grid", gap:8, alignSelf:"center" }}>
             <h4 style={{ textAlign:"center", marginBottom:4 }}>
               📦 Units Sold — by Product
             </h4>
@@ -340,36 +353,142 @@ export default function Dashboard() {
               >
                 <XAxis type="number" xAxisId="revenueAxis" />
                 <XAxis type="number" xAxisId="unitsAxis" orientation="top" />
-
                 <YAxis
                   type="category"
                   dataKey="product_name"
                   width={300}
                   interval={0}
                 />
-
                 <Tooltip />
                 <Legend />
-
-                <Bar
-                  dataKey="units"
-                  xAxisId="unitsAxis"
-                  fill="#f59e0b"
-                  name="Units Sold"
-                />
-
-                <Bar
-                  dataKey="revenue"
-                  xAxisId="revenueAxis"
-                  fill="#6366f1"
-                  name="Revenue (฿)"
-                />
+                <Bar dataKey="units" xAxisId="unitsAxis"
+                     fill="#f59e0b" name="Units Sold" />
+                <Bar dataKey="revenue" xAxisId="revenueAxis"
+                     fill="#6366f1" name="Revenue (฿)" />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </section>
 
+
+      {/* =====================================================
+         🎯 SALES DETAIL TABLE (PERIOD FILTER)
+         ===================================================== */}
+      <section className="card">
+        <div className="section-title">
+          <h3>📄 Sales Detail (From Sales CSV)</h3>
+
+          <div style={{ display:"flex", gap:10 }}>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e=>setStartDate(e.target.value)}
+            />
+            <input
+              type="date"
+              value={endDate}
+              onChange={e=>setEndDate(e.target.value)}
+            />
+            <button onClick={() => loadSalesRange()}>
+              Load Period
+            </button>
+          </div>
         </div>
 
+        {/* ---------- TOTAL SUMMARY ---------- */}
+        {salesRows.length > 0 && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <h4>📌 Totals (Selected Period)</h4>
+            <div>Number Product Sold: {formatNumber(totals.units)}</div>
+            <div>Cost: {formatNumber(totals.cost)}</div>
+            <div>Sell (Lower): {formatNumber(totals.sellLower)}</div>
+            <div>Sell (Avg): {formatNumber(totals.sellAvg)}</div>
+            <div>Profit: {formatNumber(totals.profit)}</div>
+          </div>
+        )}
+
+        {/* ---------- TABLE ---------- */}
+        {pagedRows.length > 0 && (
+          <>
+            <div style={{ maxHeight: 380, overflowY: "auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <thead>
+                  <tr style={{ textAlign:"left" }}>
+                    <th>Name</th>
+                    <th>Piece / Cost</th>
+                    <th>Number Sold</th>
+                    <th>Cost</th>
+                    <th>Sell (Lower)</th>
+                    <th>Sell (Avg)</th>
+                    <th>Profit</th>
+                    <th>Description</th>
+                    <th>Remark</th>
+                    <th>Location</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {pagedRows.map((r,i)=>(
+                    <tr key={i}>
+                      <td>{r.name}</td>
+                      <td>{r.piece_per_cost}</td>
+                      <td>{r.units_sold}</td>
+                      <td>{r.cost}</td>
+                      <td>{r.sell_price_lower}</td>
+                      <td>{r.sell_price_avg}</td>
+                      <td>{r.profit}</td>
+                      <td>{r.description}</td>
+                      <td>{r.remark}</td>
+                      <td>{r.localtion}</td>
+                      <td>{r.type}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ---------- PAGINATION ---------- */}
+            {/* ---------- PAGINATION + PAGE INFO ---------- */}
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 12
+              }}
+            >
+              <button
+                disabled={page === 0}
+                onClick={() => setPage(p => p - 1)}
+              >
+                Previous
+              </button>
+
+              <div style={{ fontSize: 13, opacity: 0.8 }}>
+                Page {page + 1} / {Math.ceil(salesRows.length / PAGE_SIZE)}
+                {"  •  "}
+                Showing{" "}
+                {salesRows.length === 0
+                  ? 0
+                  : page * PAGE_SIZE + 1}
+                –
+                {Math.min((page + 1) * PAGE_SIZE, salesRows.length)}
+                {"  of  "}
+                {salesRows.length} items
+              </div>
+
+              <button
+                disabled={(page + 1) * PAGE_SIZE >= salesRows.length}
+                onClick={() => setPage(p => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+
+          </>
+        )}
       </section>
     </div>
   );

@@ -1,6 +1,22 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api.js";
 
+function loadSavedCarts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("pos_carts"));
+    return saved && typeof saved === "object"
+      ? saved
+      : { "walkin-1": [] };
+  } catch {
+    return { "walkin-1": [] };
+  }
+}
+
+function loadActiveCart(carts) {
+  const saved = localStorage.getItem("pos_active_cart");
+  return saved && carts[saved] ? saved : Object.keys(carts)[0];
+}
+
 export default function POS() {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
@@ -8,14 +24,29 @@ export default function POS() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggest, setShowSuggest] = useState(false);
 
-  // keyboard highlight index
   const [highlight, setHighlight] = useState(-1);
-
   const suggestRef = useRef(null);
 
-  const [carts, setCarts] = useState({ "walkin-1": [] });
-  const [activeCart, setActiveCart] = useState("walkin-1");
+  const [carts, setCarts] = useState(() => loadSavedCarts());
+  const [activeCart, setActiveCart] = useState(() =>
+    loadActiveCart(loadSavedCarts())
+  );
+
+  useEffect(() => {
+    localStorage.setItem("pos_carts", JSON.stringify(carts));
+  }, [carts]);
+
+  useEffect(() => {
+    localStorage.setItem("pos_active_cart", activeCart);
+  }, [activeCart]);
+
   const [newCartName, setNewCartName] = useState("");
+
+  /* ---------- NEW: product detail modal ---------- */
+  const [detailProduct, setDetailProduct] = useState(null);
+
+  const openDetail = (p) => setDetailProduct(p);
+  const closeDetail = () => setDetailProduct(null);
 
   /* ---------------- AUTOCOMPLETE SEARCH ---------------- */
   useEffect(() => {
@@ -30,13 +61,13 @@ export default function POS() {
       const res = await api.searchProducts({ q });
       setSuggestions(res.slice(0, 10));
       setShowSuggest(true);
-      setHighlight(0); // default first row
+      setHighlight(0);
     }, 160);
 
     return () => clearTimeout(t);
   }, [q]);
 
-  /* ---------------- CLICK OUTSIDE TO CLOSE ---------------- */
+  /* ---------------- CLICK OUTSIDE ---------------- */
   useEffect(() => {
     function handleClickOutside(e) {
       if (suggestRef.current && !suggestRef.current.contains(e.target)) {
@@ -49,7 +80,7 @@ export default function POS() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  /* ---------------- MANUAL SEARCH BUTTON ---------------- */
+  /* ---------------- MANUAL SEARCH ---------------- */
   async function search() {
     const res = await api.searchProducts({ q });
     setRows(res);
@@ -137,12 +168,14 @@ export default function POS() {
     });
 
     setCarts(prev => ({ ...prev, [cartId]: [] }));
+
+    await search();
   }
 
   const activeItems = carts[activeCart] ?? [];
   const total = activeItems.reduce((s, i) => s + i.qty * i.unit_price, 0);
 
-  /* ---------------- KEYBOARD HANDLING ---------------- */
+  /* ---------------- KEYBOARD ---------------- */
   function handleKey(e) {
     if (!showSuggest || !suggestions.length) return;
 
@@ -172,8 +205,6 @@ export default function POS() {
 
       setShowSuggest(false);
       setHighlight(-1);
-
-      // Enter still performs full search
       search();
     }
   }
@@ -181,176 +212,251 @@ export default function POS() {
   /* ========================= UI ========================= */
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24 }}>
-      {/* SEARCH */}
-      <div className="card">
-        <div className="section-title">
-          <h3>🔍 Product Search</h3>
-        </div>
-
-        <div style={{ position: "relative" }} ref={suggestRef}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              onKeyDown={handleKey}
-              onFocus={() => suggestions.length && setShowSuggest(true)}
-              placeholder="Search name / type..."
-              style={{ flex: 1 }}
-            />
-            <button onClick={search}>Search</button>
-          </div>
-
-          {/* ---------- AUTOCOMPLETE DROPDOWN ---------- */}
-          {showSuggest && suggestions.length > 0 && (
+    <>
+      {/* ---------- DETAIL MODAL ---------- */}
+      {detailProduct && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100
+          }}
+          onClick={closeDetail}
+        >
+          <div
+            className="card"
+            style={{
+              width: "520px",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              padding: 16
+            }}
+            onClick={e => e.stopPropagation()}
+          >
             <div
-              className="card"
               style={{
-                position: "absolute",
-                top: 44,
-                left: 0,
-                right: 0,
-                maxHeight: 260,
-                overflowY: "auto",
-                zIndex: 30
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
               }}
             >
-              {suggestions.map((p, i) => {
-                const stock = Number(p.number);
-                const inCart =
-                  carts[activeCart]?.find(x => x.product_no === p.No_)
-                    ?.qty ?? 0;
-
-                const isActive = i === highlight;
-
-                return (
-                  <div
-                    key={p.No_}
-                    style={{
-                      padding: 10,
-                      borderBottom: "1px solid var(--border)",
-                      cursor: stock > 0 ? "pointer" : "not-allowed",
-                      opacity: stock > 0 ? 1 : 0.5,
-                      background: isActive
-                        ? "rgba(59,130,246,0.15)"
-                        : "transparent"
-                    }}
-                    onMouseEnter={() => setHighlight(i)}
-                    onClick={() => {
-                      if (stock <= 0) return;
-                      addToCart(activeCart, p);
-                      setShowSuggest(false);
-                      setHighlight(-1);
-                    }}
-                  >
-                    <b>{p.name}</b>
-
-                    <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                      Stock: {stock} • In cart: {inCart}
-                    </div>
-
-                    <div style={{ fontSize: 12 }}>
-                      Price: {p.sell_price_avg} • Type: {p.type}
-                    </div>
-                  </div>
-                );
-              })}
+              <h3>📋 Product Detail</h3>
+              <button className="danger" onClick={closeDetail}>
+                ✕
+              </button>
             </div>
-          )}
-        </div>
 
-        {/* ---------- SEARCH RESULTS ---------- */}
-        {rows.map(p => {
-          const stock = Number(p.number);
-          const cartQty =
-            carts[activeCart]?.find(i => i.product_no === p.No_)?.qty ?? 0;
+            <b style={{ fontSize: 18 }}>{detailProduct.name}</b>
 
-          return (
-            <div
-              key={p.No_}
-              style={{ padding: 12, borderBottom: "1px solid var(--border)" }}
-            >
-              <b>{p.name}</b>
-
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                Stock: {stock} • In cart: {cartQty}
+            <div style={{ marginTop: 10 }}>
+              <div>Piece / Cost: {detailProduct.piece_per_cost}</div>
+              <div>Stock: {detailProduct.number}</div>
+              <div>Cost: {detailProduct.cost}</div>
+              <div>Sell (Lower): {detailProduct.sell_price_lower}</div>
+              <div>Sell (Avg): {detailProduct.sell_price_avg}</div>
+              <div>Profit: {detailProduct.profit}</div>
+              <div>Type: {detailProduct.type}</div>
+              <div>Location: {detailProduct.localtion}</div>
+              <div>Remark: {detailProduct.remark}</div>
+              <div>Description:</div>
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  padding: 6,
+                  background: "#020617",
+                  borderRadius: 6,
+                  marginTop: 4
+                }}
+              >
+                {detailProduct.description}
               </div>
-
-              <button
-                disabled={stock <= 0 || cartQty >= stock}
-                onClick={() => addToCart(activeCart, p)}
-              >
-                {stock <= 0 ? "Out of stock" : "Add"}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* CART */}
-      <div className="card">
-        <div className="section-title">
-          <h3>🛒 Cart</h3>
-        </div>
-
-        <select
-          value={activeCart}
-          onChange={e => setActiveCart(e.target.value)}
-        >
-          {Object.keys(carts).map(cid => (
-            <option key={cid}>{cid}</option>
-          ))}
-        </select>
-
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <input
-            value={newCartName}
-            onChange={e => setNewCartName(e.target.value)}
-            placeholder="New cart ID"
-          />
-          <button onClick={addNewCart}>Add</button>
-          <button className="danger" onClick={() => removeCart(activeCart)}>
-            Delete
-          </button>
-        </div>
-
-        {activeItems.map(i => (
-          <div key={i.product_no} style={{ marginTop: 10 }}>
-            <b>{i.name}</b>
-
-            <div>
-              Qty:
-              <input
-                value={i.qty}
-                onChange={e =>
-                  updateQty(
-                    activeCart,
-                    i.product_no,
-                    Number(e.target.value)
-                  )
-                }
-                style={{ width: 60, marginLeft: 6 }}
-              />
-              <button
-                className="danger"
-                onClick={() => removeItem(activeCart, i.product_no)}
-              >
-                X
-              </button>
             </div>
           </div>
-        ))}
+        </div>
+      )}
 
-        <hr />
-        <b>Total: {total}</b>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24 }}>
+        {/* SEARCH */}
+        <div className="card">
+          <div className="section-title">
+            <h3>🔍 Product Search</h3>
+          </div>
 
-        <button
-          onClick={() => checkout(activeCart)}
-          style={{ width: "100%", marginTop: 8 }}
-        >
-          Checkout
-        </button>
+          <div style={{ position: "relative" }} ref={suggestRef}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                onKeyDown={handleKey}
+                onFocus={() => suggestions.length && setShowSuggest(true)}
+                placeholder="Search name / type..."
+                style={{ flex: 1 }}
+              />
+              <button onClick={search}>Search</button>
+            </div>
+
+            {/* ---------- AUTOCOMPLETE ---------- */}
+            {showSuggest && suggestions.length > 0 && (
+              <div
+                className="card"
+                style={{
+                  position: "absolute",
+                  top: 44,
+                  left: 0,
+                  right: 0,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  zIndex: 30
+                }}
+              >
+                {suggestions.map((p, i) => {
+                  const stock = Number(p.number);
+                  const inCart =
+                    carts[activeCart]?.find(x => x.product_no === p.No_)
+                      ?.qty ?? 0;
+
+                  const isActive = i === highlight;
+
+                  return (
+                    <div
+                      key={p.No_}
+                      style={{
+                        padding: 10,
+                        borderBottom: "1px solid var(--border)",
+                        background: isActive
+                          ? "rgba(59,130,246,0.15)"
+                          : "transparent"
+                      }}
+                      onMouseEnter={() => setHighlight(i)}
+                    >
+                      <b>{p.name}</b>
+
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                        Stock: {stock} • In cart: {inCart}
+                      </div>
+
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <button
+                          disabled={stock <= 0}
+                          onClick={() => addToCart(activeCart, p)}
+                        >
+                          Add
+                        </button>
+
+                        <button onClick={() => openDetail(p)}>
+                          Detail
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ---------- SEARCH RESULTS ---------- */}
+          {rows.map(p => {
+            const stock = Number(p.number);
+            const cartQty =
+              carts[activeCart]?.find(i => i.product_no === p.No_)?.qty ?? 0;
+
+            return (
+              <div
+                key={p.No_}
+                style={{ padding: 12, borderBottom: "1px solid var(--border)" }}
+              >
+                <b>{p.name}</b>
+
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  Stock: {stock} • In cart: {cartQty}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <button
+                    disabled={stock <= 0 || cartQty >= stock}
+                    onClick={() => addToCart(activeCart, p)}
+                  >
+                    {stock <= 0 ? "Out of stock" : "Add"}
+                  </button>
+
+                  <button onClick={() => openDetail(p)}>
+                    Detail
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* CART */}
+        <div className="card">
+          <div className="section-title">
+            <h3>🛒 Cart</h3>
+          </div>
+
+          <select
+            value={activeCart}
+            onChange={e => setActiveCart(e.target.value)}
+          >
+            {Object.keys(carts).map(cid => (
+              <option key={cid}>{cid}</option>
+            ))}
+          </select>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <input
+              value={newCartName}
+              onChange={e => setNewCartName(e.target.value)}
+              placeholder="New cart ID"
+            />
+            <button onClick={addNewCart}>Add</button>
+            <button className="danger" onClick={() => removeCart(activeCart)}>
+              Delete
+            </button>
+          </div>
+
+          {activeItems.map(i => (
+            <div key={i.product_no} style={{ marginTop: 10 }}>
+              <b>{i.name}</b>
+
+              <div>
+                Qty:
+                <input
+                  value={i.qty}
+                  onChange={e =>
+                    updateQty(
+                      activeCart,
+                      i.product_no,
+                      Number(e.target.value)
+                    )
+                  }
+                  style={{ width: 60, marginLeft: 6 }}
+                />
+                <button
+                  className="danger"
+                  onClick={() => removeItem(activeCart, i.product_no)}
+                >
+                  X
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <hr />
+          <b>Total: {total}</b>
+
+          <button
+            onClick={() => checkout(activeCart)}
+            style={{ width: "100%", marginTop: 8 }}
+          >
+            Checkout
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -1,8 +1,16 @@
 import pandas as pd
 import numpy as np
 from src.core.config import settings
+from pathlib import Path
+from datetime import datetime
 
+from src.core.config import settings
+from src.repos.csv_inventory_repo import CsvInventoryRepo
+from src.repos.csv_sales_repo import CsvSalesRepo
 class AnalyticsService:
+    def __init__(self):
+        self.inv = CsvInventoryRepo()
+        self.sales = CsvSalesRepo()    
     def _clean(self, df: pd.DataFrame) -> list[dict]:
         return (
             df
@@ -155,3 +163,113 @@ class AnalyticsService:
         )
 
         return self._clean(top)
+
+    # =========================================================
+    # latest sale date (for default dashboard filter)
+    # =========================================================
+    def get_latest_sales_date(self):
+        df = self.sales.read_df()
+        if df.empty:
+            return {"latest_date": None}
+
+        # assume ts = ISO string
+        df["date"] = pd.to_datetime(df["ts"]).dt.date
+        latest = df["date"].max()
+
+        return {"latest_date": latest.isoformat()}
+
+
+    # =========================================================
+    # sales detail for a date range (group by product)
+    # =========================================================
+    def get_sales_detail(self, start: str, end: str):
+        sales_df = self.sales.read_df()
+        inv_df = self.inv.read_df()
+
+        if sales_df.empty:
+            return []
+
+        # parse timestamps
+        sales_df["date"] = pd.to_datetime(sales_df["ts"]).dt.date
+
+        start_d = datetime.fromisoformat(start).date()
+        end_d = datetime.fromisoformat(end).date()
+
+        # filter by date range
+        sales_df = sales_df[
+            (sales_df["date"] >= start_d) &
+            (sales_df["date"] <= end_d)
+        ]
+
+        if sales_df.empty:
+            return []
+
+        # convert numeric fields
+        sales_df["qty"] = sales_df["qty"].astype(int)
+        sales_df["unit_price"] = sales_df["unit_price"].astype(float)
+
+        # compute revenue
+        sales_df["line_total"] = sales_df["qty"] * sales_df["unit_price"]
+
+        # group by product
+        grouped = (
+            sales_df
+            .groupby("product_no", as_index=False)
+            .agg(
+                units_sold=("qty", "sum"),
+                revenue_total=("line_total", "sum")
+            )
+        )
+
+        # join inventory product metadata
+        merged = grouped.merge(
+            inv_df,
+            left_on="product_no",
+            right_on="No_",
+            how="left"
+        )
+
+        # compute cost / profit using stored fields
+        merged["cost_total"] = (
+            merged["units_sold"] * merged["cost"].fillna(0)
+        )
+
+        merged["sell_lower_total"] = (
+            merged["units_sold"] * merged["sell_price_lower"].fillna(0)
+        )
+
+        merged["sell_avg_total"] = (
+            merged["units_sold"] * merged["sell_price_avg"].fillna(0)
+        )
+
+        merged["profit_total"] = (
+            merged["sell_avg_total"] - merged["cost_total"]
+        )
+
+        # return clean dict rows
+        return [
+            {
+                "product_no": int(r["product_no"]),
+
+                "name": r.get("name", ""),
+                "piece_per_cost": r.get("piece_per_cost", 0),
+
+                "units_sold": int(r["units_sold"]),
+
+                "cost": float(r.get("cost", 0)),
+                "sell_price_lower": float(r.get("sell_price_lower", 0)),
+                "sell_price_avg": float(r.get("sell_price_avg", 0)),
+                "profit": float(r.get("profit_total", 0)),
+
+                "cost_total": float(r.get("cost_total", 0)),
+                "sell_lower_total": float(r.get("sell_lower_total", 0)),
+                "sell_avg_total": float(r.get("sell_avg_total", 0)),
+                "profit_total": float(r.get("profit_total", 0)),
+
+                "description": r.get("description", ""),
+                "remark": r.get("remark", ""),
+                "localtion": r.get("localtion", ""),
+                "type": r.get("type", "")
+            }
+            for _, r in merged.iterrows()
+        ]

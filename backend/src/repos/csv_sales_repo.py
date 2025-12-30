@@ -2,13 +2,17 @@ import csv, os, uuid
 from datetime import datetime, timezone
 from src.core.config import settings
 from src.repos.locks import file_lock
-
+import pandas as pd
 LOCK_FILE = os.path.join(settings.DATA_DIR, "locks", "sales.lock")
 
 class CsvSalesRepo:
     def __init__(self, path: str = settings.SALES_CSV):
         self.path = path
-
+    def read_df(self) -> pd.DataFrame:
+        df = pd.read_csv(self.path)
+        df = df.fillna('null')
+        return df
+    
     def _ensure_file(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         if not os.path.exists(self.path):
