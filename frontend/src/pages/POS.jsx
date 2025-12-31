@@ -120,13 +120,27 @@ export default function POS() {
       return { ...prev, [cartId]: next };
     });
   }
+  function updatePrice(cartId, productNo, price) {
+    setCarts(prev => ({
+      ...prev,
+      [cartId]: prev[cartId].map(i =>
+        i.product_no === productNo
+          ? {
+              ...i,
+              unit_price: price === "" ? "" : Math.max(0, Number(price))
+            }
+          : i
+      )
+    }));
+  }
+
 
   function updateQty(cartId, productNo, qty) {
     setCarts(prev => ({
       ...prev,
       [cartId]: prev[cartId].map(i =>
         i.product_no === productNo
-          ? { ...i, qty: Math.min(Math.max(1, qty), i.stock) }
+          ? { ...i, qty: qty === "" ? "" : Math.min(Math.max(0, Number(qty)), i.stock) }
           : i
       )
     }));
@@ -160,11 +174,12 @@ export default function POS() {
 
     await api.checkout({
       customer_id: cartId,
-      items: items.map(({ product_no, qty, unit_price }) => ({
-        product_no,
-        qty,
-        unit_price
+      items: items.map(i => ({
+        product_no: i.product_no,
+        qty: Number(i.qty || 0),
+        unit_price: Number(i.unit_price || 0)
       }))
+
     });
 
     setCarts(prev => ({ ...prev, [cartId]: [] }));
@@ -173,7 +188,12 @@ export default function POS() {
   }
 
   const activeItems = carts[activeCart] ?? [];
-  const total = activeItems.reduce((s, i) => s + i.qty * i.unit_price, 0);
+  // const total = activeItems.reduce((s, i) => s + i.qty * i.unit_price, 0);
+  const total = activeItems.reduce((s, i) =>
+    s +
+    (Number(i.qty || 0) * Number(i.unit_price || 0))
+  , 0);
+
 
   /* ---------------- KEYBOARD ---------------- */
   function handleKey(e) {
@@ -423,26 +443,37 @@ export default function POS() {
             <div key={i.product_no} style={{ marginTop: 10 }}>
               <b>{i.name}</b>
 
-              <div>
-                Qty:
-                <input
-                  value={i.qty}
-                  onChange={e =>
-                    updateQty(
-                      activeCart,
-                      i.product_no,
-                      Number(e.target.value)
-                    )
-                  }
-                  style={{ width: 60, marginLeft: 6 }}
-                />
-                <button
-                  className="danger"
-                  onClick={() => removeItem(activeCart, i.product_no)}
-                >
-                  X
-                </button>
-              </div>
+                <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                  Qty:
+                  <input
+                    type="number"
+                    value={i.qty}
+                    onChange={e =>
+                      updateQty(activeCart, i.product_no, e.target.value)
+                    }
+                    style={{ width: 60, marginLeft: 6 }}
+                  />
+
+
+                  Sold Price:
+                  <input
+                    type="number"
+                    value={i.unit_price}
+                    onChange={e =>
+                      updatePrice(activeCart, i.product_no, e.target.value)
+                    }
+                    style={{ width: 80 }}
+                  />
+
+
+                  <button
+                    className="danger"
+                    onClick={() => removeItem(activeCart, i.product_no)}
+                  >
+                    X
+                  </button>
+                </div>
+
             </div>
           ))}
 

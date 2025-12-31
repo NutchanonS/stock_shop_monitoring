@@ -189,13 +189,11 @@ class AnalyticsService:
         if sales_df.empty:
             return []
 
-        # parse timestamps
         sales_df["date"] = pd.to_datetime(sales_df["ts"]).dt.date
 
         start_d = datetime.fromisoformat(start).date()
         end_d = datetime.fromisoformat(end).date()
 
-        # filter by date range
         sales_df = sales_df[
             (sales_df["date"] >= start_d) &
             (sales_df["date"] <= end_d)
@@ -204,24 +202,22 @@ class AnalyticsService:
         if sales_df.empty:
             return []
 
-        # convert numeric fields
+        # values from POS cart
         sales_df["qty"] = sales_df["qty"].astype(int)
         sales_df["unit_price"] = sales_df["unit_price"].astype(float)
 
-        # compute revenue
+        # 👇 THIS IS ACTUAL SOLD PRICE (from POS)
         sales_df["line_total"] = sales_df["qty"] * sales_df["unit_price"]
 
-        # group by product
         grouped = (
             sales_df
             .groupby("product_no", as_index=False)
             .agg(
                 units_sold=("qty", "sum"),
-                revenue_total=("line_total", "sum")
+                revenue_total=("line_total", "sum")  # <-- ACTUAL SOLD PRICE
             )
         )
 
-        # join inventory product metadata
         merged = grouped.merge(
             inv_df,
             left_on="product_no",
@@ -229,7 +225,7 @@ class AnalyticsService:
             how="left"
         )
 
-        # compute cost / profit using stored fields
+        # inventory-based reference prices
         merged["cost_total"] = (
             merged["units_sold"] * merged["cost"].fillna(0)
         )
@@ -242,11 +238,16 @@ class AnalyticsService:
             merged["units_sold"] * merged["sell_price_avg"].fillna(0)
         )
 
+        # OLD “expected profit” (from inventory avg price)
         merged["profit_total"] = (
             merged["sell_avg_total"] - merged["cost_total"]
         )
 
-        # return clean dict rows
+        # NEW — TRUE PROFIT FROM POS PRICE
+        merged["actual_profit_total"] = (
+            merged["revenue_total"] - merged["cost_total"]
+        )
+
         return [
             {
                 "product_no": int(r["product_no"]),
@@ -256,15 +257,24 @@ class AnalyticsService:
 
                 "units_sold": int(r["units_sold"]),
 
+                # reference inventory prices
                 "cost": float(r.get("cost", 0)),
                 "sell_price_lower": float(r.get("sell_price_lower", 0)),
                 "sell_price_avg": float(r.get("sell_price_avg", 0)),
+
+                # expected profit (inventory avg price)
                 "profit": float(r.get("profit_total", 0)),
 
+                # totals from inventory price levels
                 "cost_total": float(r.get("cost_total", 0)),
                 "sell_lower_total": float(r.get("sell_lower_total", 0)),
                 "sell_avg_total": float(r.get("sell_avg_total", 0)),
-                "profit_total": float(r.get("profit_total", 0)),
+
+                # 👇 NEW — TRUE ACTUAL PRICE
+                "actual_sold_total": float(r.get("revenue_total", 0)),
+
+                # 👇 NEW — TRUE PROFIT FROM POS SOLD PRICE
+                "actual_profit_total": float(r.get("actual_profit_total", 0)),
 
                 "description": r.get("description", ""),
                 "remark": r.get("remark", ""),

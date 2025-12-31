@@ -209,13 +209,19 @@ export default function Dashboard() {
     [salesRows, page]
   );
 
+  /* ---------- ⬅️ NEW: include actual sold price totals ---------- */
   const totals = useMemo(() => ({
-    units: sumField(salesRows, "units_sold"),
-    cost: sumField(salesRows, "cost_total"),
-    sellLower: sumField(salesRows, "sell_lower_total"),
-    sellAvg: sumField(salesRows, "sell_avg_total"),
-    profit: sumField(salesRows, "profit_total")
+    units:      sumField(salesRows, "units_sold"),
+    cost:       sumField(salesRows, "cost_total"),
+    sellLower:  sumField(salesRows, "sell_lower_total"),
+    sellAvg:    sumField(salesRows, "sell_avg_total"),
+
+    actualSold: sumField(salesRows, "actual_sold_total"),
+    actualProfit: sumField(salesRows, "actual_profit_total"),
+
+    profit:     sumField(salesRows, "profit_total")
   }), [salesRows]);
+
 
 
   /* =====================================================
@@ -402,9 +408,18 @@ export default function Dashboard() {
             <h4>📌 Totals (Selected Period)</h4>
             <div>Number Product Sold: {formatNumber(totals.units)}</div>
             <div>Cost: {formatNumber(totals.cost)}</div>
+            {/* <div>Sell (Lower): {formatNumber(totals.sellLower)}</div>
+            <div>Sell (Avg): {formatNumber(totals.sellAvg)}</div>
+            <div><b>Actual Sold Price:</b> {formatNumber(totals.actualSold)}</div>
+            <div>Profit: {formatNumber(totals.profit)}</div> */}
             <div>Sell (Lower): {formatNumber(totals.sellLower)}</div>
             <div>Sell (Avg): {formatNumber(totals.sellAvg)}</div>
-            <div>Profit: {formatNumber(totals.profit)}</div>
+
+            <div><b>Actual Sold Price:</b> {formatNumber(totals.actualSold)}</div>
+            <div><b>Actual Profit:</b> {formatNumber(totals.actualProfit)}</div>
+
+            <div>Expected Profit (Avg Price): {formatNumber(totals.profit)}</div>
+
           </div>
         )}
 
@@ -421,7 +436,12 @@ export default function Dashboard() {
                     <th>Cost</th>
                     <th>Sell (Lower)</th>
                     <th>Sell (Avg)</th>
-                    <th>Profit</th>
+
+                    <th>Actual Sold Price</th>
+                    <th>Actual Profit</th>
+
+                    <th>Profit (Avg)</th>
+
                     <th>Description</th>
                     <th>Remark</th>
                     <th>Location</th>
@@ -435,10 +455,17 @@ export default function Dashboard() {
                       <td>{r.name}</td>
                       <td>{r.piece_per_cost}</td>
                       <td>{r.units_sold}</td>
+
                       <td>{r.cost}</td>
                       <td>{r.sell_price_lower}</td>
                       <td>{r.sell_price_avg}</td>
+
+                      <td>{r.actual_sold_total}</td>
+                      <td>{r.actual_profit_total}</td>
+
                       <td>{r.profit}</td>
+
+
                       <td>{r.description}</td>
                       <td>{r.remark}</td>
                       <td>{r.localtion}</td>
@@ -449,7 +476,6 @@ export default function Dashboard() {
               </table>
             </div>
 
-            {/* ---------- PAGINATION ---------- */}
             {/* ---------- PAGINATION + PAGE INFO ---------- */}
             <div
               style={{
@@ -486,7 +512,6 @@ export default function Dashboard() {
                 Next
               </button>
             </div>
-
           </>
         )}
       </section>
